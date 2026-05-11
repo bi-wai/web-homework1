@@ -1,0 +1,1600 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>穿越火线：极端天气副本 - 3D射击训练</title>
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --hud-text: #e0e0e0;
+            --accent: #c0392b;
+            --accent-green: #4caf50;
+            --accent-blue: #4a9eff;
+            --panel-bg: rgba(0, 0, 0, 0.75);
+            --border: rgba(255, 255, 255, 0.15);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            font-family: 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', 'Heiti SC', sans-serif;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            cursor: default;
+            width: 100vw;
+            height: 100vh;
+            touch-action: none;
+        }
+
+        #game-container {
+            position: fixed;
+            inset: 0;
+            z-index: 1;
+        }
+        #game-container canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            transition: filter 0.4s ease;
+        }
+        #game-container.thermal canvas {
+            filter: grayscale(0.7) brightness(1.5) contrast(2.2) sepia(0.5) hue-rotate(315deg) saturate(3.5) !important;
+        }
+
+        #overlay-canvas {
+            position: fixed;
+            inset: 0;
+            z-index: 2;
+            pointer-events: none;
+            display: none;
+        }
+        #overlay-canvas.active {
+            display: block;
+        }
+
+        #crosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 3;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #crosshair svg {
+            width: 28px;
+            height: 28px;
+            filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.8));
+        }
+        #crosshair.ads-mode svg {
+            width: 6px;
+            height: 6px;
+            opacity: 0.7;
+        }
+
+        #scope-overlay {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 4;
+            pointer-events: none;
+            display: none;
+            border-radius: 50%;
+            width: 420px;
+            height: 420px;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.85), 0 0 0 3px rgba(0, 0, 0, 0.9);
+            border: 2px solid rgba(30, 30, 30, 0.6);
+        }
+        #scope-overlay.active {
+            display: block;
+        }
+        #scope-water-canvas {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 5;
+            pointer-events: none;
+            display: none;
+            border-radius: 50%;
+            width: 420px;
+            height: 420px;
+        }
+        #scope-water-canvas.active {
+            display: block;
+        }
+
+        #hud {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+        .hud-row {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .hud-item {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 7px 14px;
+            color: var(--hud-text);
+            font-size: 0.8rem;
+            letter-spacing: 0.04em;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            white-space: nowrap;
+            transition: all 0.25s ease;
+        }
+        .hud-item.warning {
+            border-color: var(--accent);
+            color: #ff6b6b;
+            animation: pulse-warn 1.2s ease-in-out infinite;
+        }
+        .hud-item.active-weather {
+            border-color: #ff9800;
+            color: #ffb74d;
+            box-shadow: 0 0 12px rgba(255, 152, 0, 0.3);
+        }
+        .hud-item.thermal-on {
+            border-color: #e040fb;
+            color: #ea80fc;
+            box-shadow: 0 0 14px rgba(224, 64, 251, 0.35);
+        }
+        .ammo-display {
+            font-size: 1.4rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            font-variant-numeric: tabular-nums;
+            font-family: 'SF Mono', 'Consolas', 'Menlo', monospace;
+        }
+        .ammo-low {
+            color: #ff4444 !important;
+            animation: pulse-warn 0.6s ease-in-out infinite;
+        }
+
+        @keyframes pulse-warn {
+            0%,
+            100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.4;
+            }
+        }
+
+        #click-prompt {
+            position: fixed;
+            inset: 0;
+            z-index: 20;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            background: rgba(0, 0, 0, 0.55);
+            transition: opacity 0.5s ease;
+        }
+        #click-prompt.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        #click-prompt .prompt-inner {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 28px 36px;
+            text-align: center;
+            color: #fff;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        #click-prompt h3 {
+            font-size: 1.4rem;
+            margin-bottom: 6px;
+            letter-spacing: 0.04em;
+        }
+        #click-prompt p {
+            font-size: 0.85rem;
+            color: #bbb;
+            margin: 4px 0;
+            letter-spacing: 0.03em;
+        }
+        #click-prompt .key-hint {
+            display: inline-block;
+            background: #333;
+            color: #fff;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            margin: 0 2px;
+            font-family: 'SF Mono', 'Consolas', monospace;
+        }
+
+        #reload-bar-container {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            pointer-events: none;
+            display: none;
+            width: 180px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        #reload-bar-fill {
+            height: 100%;
+            background: #ff9800;
+            border-radius: 2px;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+        #overlay-canvas {
+    background: transparent !important;
+}
+#game-container.thermal canvas {
+    filter: grayscale(1) contrast(1.8) brightness(1.1) !important;
+}
+    </style>
+</head>
+<body>
+
+    <div id="game-container"></div>
+    <canvas id="overlay-canvas"></canvas>
+    <canvas id="scope-water-canvas" width="420" height="420"></canvas>
+    <div id="scope-overlay"></div>
+    <div id="crosshair">
+        <svg viewBox="0 0 28 28"><circle cx="14" cy="14" r="12" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="1.2"/><circle cx="14" cy="14" r="2" fill="rgba(255,60,60,0.8)"/><line x1="14" y1="2" x2="14" y2="7" stroke="rgba(255,255,255,0.9)" stroke-width="1"/><line x1="14" y1="21" x2="14" y2="26" stroke="rgba(255,255,255,0.9)" stroke-width="1"/><line x1="2" y1="14" x2="7" y2="14" stroke="rgba(255,255,255,0.9)" stroke-width="1"/><line x1="21" y1="14" x2="26" y2="14" stroke="rgba(255,255,255,0.9)" stroke-width="1"/></svg>
+    </div>
+    <div id="click-prompt">
+        <div class="prompt-inner">
+            <h3>🎯 极端天气射击训练场</h3>
+            <p>点击屏幕锁定鼠标开始</p>
+            <p style="font-size:0.75rem;color:#999;">
+                <span class="key-hint">WASD</span> 移动 &nbsp;
+                <span class="key-hint">鼠标</span> 瞄准/开火 &nbsp;
+                <span class="key-hint">右键</span> 开镜
+            </p>
+            <p style="font-size:0.75rem;color:#999;">
+                <span class="key-hint">R</span> 换弹 &nbsp;
+                <span class="key-hint">T</span> 热成像 &nbsp;
+                <span class="key-hint">1</span>大风 <span class="key-hint">2</span>暴雨 <span class="key-hint">3</span>大雾 <span class="key-hint">0</span>晴
+            </p>
+        </div>
+    </div>
+    <div id="reload-bar-container"><div id="reload-bar-fill"></div></div>
+    <div id="hud">
+        <div class="hud-row">
+            <div class="hud-item" id="hud-ammo">
+                <span class="ammo-display" id="ammo-current">30</span><span style="font-size:0.7rem;opacity:0.7;"> / 30</span>
+            </div>
+            <div class="hud-item" id="hud-weather">☀️ 晴</div>
+            <div class="hud-item" id="hud-thermal">🌡️ 热成像: 关</div>
+            <div class="hud-item" id="hud-wind">💨 风速: 0级</div>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+        // ==================== DOM REFS ====================
+        const container = document.getElementById('game-container');
+        const overlayCanvas = document.getElementById('overlay-canvas');
+        const scopeWaterCanvas = document.getElementById('scope-water-canvas');
+        const scopeOverlay = document.getElementById('scope-overlay');
+        const crosshairEl = document.getElementById('crosshair');
+        const clickPrompt = document.getElementById('click-prompt');
+        const reloadBarContainer = document.getElementById('reload-bar-container');
+        const reloadBarFill = document.getElementById('reload-bar-fill');
+        const hudAmmoCurrent = document.getElementById('ammo-current');
+        const hudWeather = document.getElementById('hud-weather');
+        const hudThermal = document.getElementById('hud-thermal');
+        const hudWind = document.getElementById('hud-wind');
+        const gameContainer = document.getElementById('game-container');
+
+        const overlayCtx = overlayCanvas.getContext('2d');
+        const waterCtx = scopeWaterCanvas.getContext('2d');
+
+        // ==================== THREE.JS SETUP ====================
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x4a6fa5);
+        scene.fog = new THREE.FogExp2(0x8aacc4, 0.00008);
+
+        const camera = new THREE.PerspectiveCamera(78, window.innerWidth / window.innerHeight, 0.15, 400);
+        camera.position.set(0, 1.7, 0);
+        camera.lookAt(0, 1.7, -10);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.1;
+        container.appendChild(renderer.domElement);
+
+        // ==================== LIGHTING ====================
+        const ambientLight = new THREE.AmbientLight(0x8899bb, 0.9);
+        scene.add(ambientLight);
+        const sunLight = new THREE.DirectionalLight(0xffeedd, 3.5);
+        sunLight.position.set(40, 50, 20);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.near = 0.5;
+        sunLight.shadow.camera.far = 200;
+        sunLight.shadow.camera.left = -60;
+        sunLight.shadow.camera.right = 60;
+        sunLight.shadow.camera.top = 60;
+        sunLight.shadow.camera.bottom = -60;
+        sunLight.shadow.bias = -0.0004;
+        scene.add(sunLight);
+        const hemiLight = new THREE.HemisphereLight(0x8899cc, 0x554433, 0.7);
+        scene.add(hemiLight);
+
+        // ==================== CONTROLS ====================
+        const controls = new PointerLockControls(camera, renderer.domElement);
+        controls.pointerSpeed = 0.45;
+        controls.maxPolarAngle = Math.PI * 0.85;
+
+        const keys = {};
+        let isPointerLocked = false;
+
+        controls.addEventListener('lock', () => {
+            isPointerLocked = true;
+            clickPrompt.classList.add('hidden');
+        });
+        controls.addEventListener('unlock', () => {
+            isPointerLocked = false;
+            clickPrompt.classList.remove('hidden');
+        });
+
+        document.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true;
+            e.key.toLowerCase() === 't' && toggleThermal(); });
+        document.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === '1') toggleWeather('wind');
+            if (e.key === '2') toggleWeather('rain');
+            if (e.key === '3') toggleWeather('fog');
+            if (e.key === '0' || e.key === '`') clearAllWeather();
+        });
+        document.addEventListener('mousedown', (e) => {
+            if (!isPointerLocked) return;
+            if (e.button === 0) startFiring();
+            if (e.button === 2) toggleADS(true);
+        });
+        document.addEventListener('mouseup', (e) => {
+            if (e.button === 0) stopFiring();
+            if (e.button === 2) toggleADS(false);
+        });
+        document.addEventListener('contextmenu', (e) => e.preventDefault());
+        renderer.domElement.addEventListener('click', () => {
+            if (!isPointerLocked) controls.lock();
+        });
+
+        // ==================== GAME STATE ====================
+        const GRAVITY = 9.8;
+        const MAX_AMMO = 30;
+        let currentAmmo = MAX_AMMO;
+        let isReloading = false;
+        let reloadStartTime = 0;
+        const RELOAD_DURATION = 2.2;
+        let isADS = false;
+        let adsTarget = 0;
+        let adsCurrent = 0;
+        const ADS_FOV = 35;
+        const NORMAL_FOV = 78;
+        let isFiring = false;
+        let fireCooldown = 0;
+        const FIRE_RATE = 0.12;
+        let isThermal = false;
+        // 大风粒子系统
+let windParticleSystem = null;
+const WIND_PARTICLE_COUNT = 600;
+const windParticleVelocities = new Float32Array(WIND_PARTICLE_COUNT);
+        // 雾球相关
+let fogSphere = null;
+const FOG_SPHERE_RADIUS = 25;   // 雾球半径，越大内部视野越远
+
+        // Weather state
+        let weatherWind = false;
+        let weatherRain = false;
+        let weatherFog = false;
+        let windSpeed = 0; // 0-5 scale
+        let windDirection = new THREE.Vector3(1, 0, 0.3).normalize();
+        let windGustTimer = 0;
+        let targetWindSpeed = 0;
+
+        // ==================== SCENE BUILDING ====================
+        // Ground
+        const groundGeo = new THREE.PlaneGeometry(200, 200);
+        const groundMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.85, metalness: 0.05 });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // Road markings
+        const roadGeo = new THREE.PlaneGeometry(6, 200);
+        const roadMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.7, metalness: 0.1 });
+        const road = new THREE.Mesh(roadGeo, roadMat);
+        road.rotation.x = -Math.PI / 2;
+        road.position.y = 0.01;
+        road.receiveShadow = true;
+        scene.add(road);
+
+        // Buildings
+        const buildingData = [
+            { x: -25, z: -30, w: 10, h: 14, d: 8, color: 0x7a7a7a },
+            { x: 20, z: -35, w: 8, h: 18, d: 10, color: 0x6e6e6e },
+            { x: -30, z: -55, w: 12, h: 22, d: 9, color: 0x888888 },
+            { x: 28, z: -60, w: 9, h: 16, d: 11, color: 0x757575 },
+            { x: -8, z: -70, w: 14, h: 10, d: 7, color: 0x6a6a6a },
+            { x: 35, z: -20, w: 7, h: 20, d: 8, color: 0x7c7c7c },
+            { x: -40, z: -25, w: 8, h: 12, d: 10, color: 0x818181 },
+        ];
+        const buildings = [];
+        buildingData.forEach(bd => {
+            const geo = new THREE.BoxGeometry(bd.w, bd.h, bd.d);
+            const mat = new THREE.MeshStandardMaterial({ color: bd.color, roughness: 0.6, metalness: 0.2 });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(bd.x, bd.h / 2, bd.z);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.userData.isBuilding = true;
+            scene.add(mesh);
+            buildings.push(mesh);
+        });
+
+        // Containers
+        const containerColors = [0xc0392b, 0x2980b9, 0x27ae60, 0xf39c12, 0x8e44ad, 0xd35400, 0x1a6e3a, 0x7f8c8d];
+        const containers = [];
+        for (let i = 0; i < 18; i++) {
+            const w = 2.4 + Math.random() * 1.5;
+            const h = 2.2 + Math.random() * 1.2;
+            const d = 5 + Math.random() * 3;
+            const geo = new THREE.BoxGeometry(w, h, d);
+            const mat = new THREE.MeshStandardMaterial({
+                color: containerColors[Math.floor(Math.random() * containerColors.length)],
+                roughness: 0.5,
+                metalness: 0.4
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(
+                (Math.random() - 0.5) * 50,
+                h / 2,
+                -15 - Math.random() * 60
+            );
+            mesh.rotation.y = (Math.random() - 0.5) * 0.6;
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.userData.isContainer = true;
+            scene.add(mesh);
+            containers.push(mesh);
+        }
+
+        // Bridge structure
+        const bridgePillarGeo = new THREE.CylinderGeometry(1.5, 1.8, 16, 8);
+        const bridgePillarMat = new THREE.MeshStandardMaterial({ color: 0x9e9e9e, roughness: 0.5, metalness: 0.3 });
+        const pillar1 = new THREE.Mesh(bridgePillarGeo, bridgePillarMat);
+        pillar1.position.set(-15, 8, -45);
+        pillar1.castShadow = true;
+        pillar1.receiveShadow = true;
+        scene.add(pillar1);
+        const pillar2 = new THREE.Mesh(bridgePillarGeo, bridgePillarMat);
+        pillar2.position.set(15, 8, -45);
+        pillar2.castShadow = true;
+        pillar2.receiveShadow = true;
+        scene.add(pillar2);
+        const bridgeDeckGeo = new THREE.BoxGeometry(36, 1.2, 7);
+        const bridgeDeckMat = new THREE.MeshStandardMaterial({ color: 0x7a7a7a, roughness: 0.55, metalness: 0.35 });
+        const bridgeDeck = new THREE.Mesh(bridgeDeckGeo, bridgeDeckMat);
+        bridgeDeck.position.set(0, 16.5, -45);
+        bridgeDeck.castShadow = true;
+        bridgeDeck.receiveShadow = true;
+        scene.add(bridgeDeck);
+
+        // Targets
+        const targets = [];
+        const targetHitboxes = [];
+
+        function createTarget(x, y, z, type = 'humanoid') {
+            const group = new THREE.Group();
+            if (type === 'humanoid') {
+                const bodyGeo = new THREE.CylinderGeometry(0.35, 0.4, 1.6, 8);
+                const bodyMat = new THREE.MeshStandardMaterial({ color: 0xdd4444, roughness: 0.5, metalness: 0.1,
+                    emissive: 0x220000, emissiveIntensity: 0.3 });
+                const body = new THREE.Mesh(bodyGeo, bodyMat);
+                body.position.y = 1.2;
+                body.castShadow = true;
+                group.add(body);
+                const headGeo = new THREE.SphereGeometry(0.28, 8, 6);
+                const headMat = new THREE.MeshStandardMaterial({ color: 0xffcccc, roughness: 0.5, metalness: 0.05,
+                    emissive: 0x110000, emissiveIntensity: 0.2 });
+                const head = new THREE.Mesh(headGeo, headMat);
+                head.position.y = 2.2;
+                head.castShadow = true;
+                group.add(head);
+            } else {
+                const panelGeo = new THREE.BoxGeometry(1.5, 2.5, 0.2);
+                const panelMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3, metalness: 0.1,
+                    emissive: 0x111111, emissiveIntensity: 0.15 });
+                const panel = new THREE.Mesh(panelGeo, panelMat);
+                panel.position.y = 1.5;
+                panel.castShadow = true;
+                group.add(panel);
+                const ringGeo = new THREE.TorusGeometry(0.55, 0.05, 8, 16);
+                const ringMat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.2, emissive: 0xff0000,
+                    emissiveIntensity: 0.5 });
+                for (let r = 0; r < 3; r++) {
+                    const ring = new THREE.Mesh(ringGeo, ringMat);
+                    ring.position.y = 0.7 + r * 0.8;
+                    ring.rotation.x = Math.PI / 2;
+                    group.add(ring);
+                }
+            }
+            group.position.set(x, y, z);
+            group.userData.isTarget = true;
+            group.userData.targetType = type;
+// 热成像穿透轮廓（默认隐藏，白色高亮）
+const heatGlow = new THREE.Mesh(
+    new THREE.SphereGeometry(type === 'humanoid' ? 0.6 : 0.9, 8, 8),
+    new THREE.MeshBasicMaterial({
+        color: 0xffffff,       // 纯白色
+        transparent: true,
+        opacity: 0.85,
+        depthTest: false,
+        depthWrite: false,
+    })
+);
+heatGlow.position.y = type === 'humanoid' ? 1.4 : 1.5;
+heatGlow.visible = false;
+heatGlow.name = 'heatGlow';
+group.add(heatGlow);
+
+            scene.add(group);
+            targets.push(group);
+            // Store hitbox info
+            targetHitboxes.push({
+                group,
+                type,
+                center: new THREE.Vector3(x, y + (type === 'humanoid' ? 1.4 : 1.5), z),
+                radius: type === 'humanoid' ? 0.55 : 1.1,
+                height: type === 'humanoid' ? 2.8 : 2.5,
+                hit: false,
+                respawnTime: 0,
+            });
+            return group;
+        }
+
+        // Place targets around the scene
+        const targetPositions = [
+            { x: -12, z: -20, type: 'humanoid' }, { x: 5, z: -25, type: 'bullseye' },
+            { x: -20, z: -38, type: 'humanoid' }, { x: 18, z: -40, type: 'bullseye' },
+            { x: -5, z: -50, type: 'humanoid' }, { x: -28, z: -48, type: 'humanoid' },
+            { x: 25, z: -55, type: 'bullseye' }, { x: -15, z: -65, type: 'humanoid' },
+            { x: 10, z: -68, type: 'humanoid' }, { x: -35, z: -35, type: 'bullseye' },
+            { x: 32, z: -30, type: 'humanoid' }, { x: 0, z: -40, type: 'bullseye' },
+        ];
+        targetPositions.forEach(tp => {
+            createTarget(tp.x, 0, tp.z, tp.type);
+        });
+
+        // ==================== FIRST PERSON ARMS & GUN ====================
+        const fpGroup = new THREE.Group();
+        scene.add(fpGroup);   // 改为添加到场景
+window.fpGroup = fpGroup; // 便于调测
+        fpGroup.position.set(0.35, -0.38, -0.55);
+
+        // Gun group
+        const gunGroup = new THREE.Group();
+        // 记录枪组的原始局部位置
+const gunRestPosition = new THREE.Vector3(0, 0, 0);
+        fpGroup.add(gunGroup);
+        gunGroup.position.set(0, 0, 0);
+
+        // Barrel
+        const barrelGeo = new THREE.CylinderGeometry(0.025, 0.028, 0.7, 12);
+        const barrelMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.3, metalness: 0.8 });
+        const barrel = new THREE.Mesh(barrelGeo, barrelMat);
+        barrel.rotation.x = Math.PI / 2;
+        barrel.position.set(0, 0.04, -0.45);
+        barrel.castShadow = true;
+        gunGroup.add(barrel);
+
+        // Receiver
+        const receiverGeo = new THREE.BoxGeometry(0.07, 0.1, 0.38);
+        const receiverMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.25, metalness: 0.85 });
+        const receiver = new THREE.Mesh(receiverGeo, receiverMat);
+        receiver.position.set(0, 0.05, -0.12);
+        gunGroup.add(receiver);
+
+        // Handguard
+        const handguardGeo = new THREE.BoxGeometry(0.06, 0.08, 0.25);
+        const handguardMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.35, metalness: 0.6 });
+        const handguard = new THREE.Mesh(handguardGeo, handguardMat);
+        handguard.position.set(0, 0.03, -0.35);
+        gunGroup.add(handguard);
+
+        // Grip
+        const gripGeo = new THREE.BoxGeometry(0.04, 0.14, 0.05);
+        const gripMat = new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.6, metalness: 0.05 });
+        const grip = new THREE.Mesh(gripGeo, gripMat);
+        grip.position.set(0, -0.07, 0.02);
+        grip.rotation.x = 0.25;
+        gunGroup.add(grip);
+
+        // Magazine
+        const magGeo = new THREE.BoxGeometry(0.035, 0.18, 0.05);
+        const magMat = new THREE.MeshStandardMaterial({ color: 0x2a1a10, roughness: 0.55, metalness: 0.1 });
+        const magazine = new THREE.Mesh(magGeo, magMat);
+        magazine.position.set(0, -0.1, -0.02);
+        magazine.rotation.x = 0.15;
+        magazine.name = 'magazine';
+        gunGroup.add(magazine);
+
+        // Stock
+        const stockGeo = new THREE.BoxGeometry(0.05, 0.09, 0.2);
+        const stockMat = new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.6, metalness: 0.05 });
+        const stock = new THREE.Mesh(stockGeo, stockMat);
+        stock.position.set(0, 0.02, 0.16);
+        gunGroup.add(stock);
+
+        // Scope on top
+        const scopeGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.09, 8);
+        const scopeMeshMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2, metalness: 0.9 });
+        const scopeMesh = new THREE.Mesh(scopeGeo, scopeMeshMat);
+        scopeMesh.rotation.x = Math.PI / 2;
+        scopeMesh.position.set(0, 0.11, -0.1);
+        gunGroup.add(scopeMesh);
+
+        // Arms
+        const armGeo = new THREE.CylinderGeometry(0.04, 0.045, 0.5, 8);
+        const armMat = new THREE.MeshStandardMaterial({ color: 0xd4b896, roughness: 0.7, metalness: 0.02 });
+        const rightArm = new THREE.Mesh(armGeo, armMat);
+        rightArm.position.set(-0.15, -0.2, 0.05);
+        rightArm.rotation.z = -0.5;
+        rightArm.rotation.x = -0.3;
+        fpGroup.add(rightArm);
+        const leftArm = new THREE.Mesh(armGeo.clone(), armMat);
+        leftArm.position.set(0.08, -0.22, -0.3);
+        leftArm.rotation.z = 0.4;
+        leftArm.rotation.x = -0.2;
+        fpGroup.add(leftArm);
+
+        // Hand geo
+        const handGeo = new THREE.SphereGeometry(0.05, 6, 4);
+        const handMat = new THREE.MeshStandardMaterial({ color: 0xd4b896, roughness: 0.7, metalness: 0.02 });
+        const rightHand = new THREE.Mesh(handGeo, handMat);
+        rightHand.position.set(-0.1, -0.32, 0.04);
+        rightHand.scale.set(1, 0.7, 0.8);
+        fpGroup.add(rightHand);
+        const leftHand = new THREE.Mesh(handGeo.clone(), handMat);
+        leftHand.position.set(0.05, -0.3, -0.33);
+        leftHand.scale.set(1, 0.7, 0.8);
+        fpGroup.add(leftHand);
+
+        // ==================== MUZZLE FLASH ====================
+        const muzzleFlashGeo = new THREE.SphereGeometry(0.04, 6, 4);
+        const muzzleFlashMat = new THREE.MeshBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0,
+            depthWrite: false });
+        const muzzleFlash = new THREE.Mesh(muzzleFlashGeo, muzzleFlashMat);
+        muzzleFlash.position.set(0, 0.04, -0.82);
+        gunGroup.add(muzzleFlash);
+
+        // ==================== RAIN PARTICLES ====================
+        const rainCount = 3000;
+        const rainGeo = new THREE.BufferGeometry();
+        const rainPositions = new Float32Array(rainCount * 3);
+        const rainVelocities = new Float32Array(rainCount);
+        for (let i = 0; i < rainCount; i++) {
+            rainPositions[i * 3] = (Math.random() - 0.5) * 80;
+            rainPositions[i * 3 + 1] = Math.random() * 50;
+            rainPositions[i * 3 + 2] = (Math.random() - 0.5) * 80;
+            rainVelocities[i] = 15 + Math.random() * 25;
+        }
+        rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+        const rainMat = new THREE.PointsMaterial({ color: 0xaaccff, size: 0.08, transparent: true, opacity: 0.55,
+            depthWrite: false, blending: THREE.AdditiveBlending });
+        const rainSystem = new THREE.Points(rainGeo, rainMat);
+        rainSystem.visible = false;
+        scene.add(rainSystem);
+
+        // ==================== WIND DEBRIS PARTICLES ====================
+(function createWindParticles() {
+    const positions = new Float32Array(WIND_PARTICLE_COUNT * 3);
+    for (let i = 0; i < WIND_PARTICLE_COUNT; i++) {
+        positions[i * 3] = (Math.random() - 0.5) * 80;
+        positions[i * 3 + 1] = Math.random() * 30 + 1;
+        positions[i * 3 + 2] = (Math.random() - 0.5) * 80;
+        windParticleVelocities[i] = 5 + Math.random() * 15; // 基础速度因子
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const mat = new THREE.PointsMaterial({
+        color: 0xbbaa99,
+        size: 0.15,
+        transparent: true,
+        opacity: 0.45,
+        depthWrite: false,
+        blending: THREE.NormalBlending
+    });
+    windParticleSystem = new THREE.Points(geo, mat);
+    windParticleSystem.visible = false;
+    scene.add(windParticleSystem);
+})();
+        // ==================== AUDIO (Simple synthesized sounds) ====================
+        let audioCtx = null;
+
+        function getAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new(window.AudioContext || window.webkitAudioContext)();
+            }
+            return audioCtx;
+        }
+
+        function playGunshot() {
+            try {
+                const ctx = getAudioContext();
+                const now = ctx.currentTime;
+                const bufferSize = ctx.sampleRate * 0.15;
+                const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    const t = i / ctx.sampleRate;
+                    const env = Math.exp(-t * 30);
+                    data[i] = (Math.random() * 2 - 1) * env * 0.7;
+                    if (t < 0.02) data[i] *= Math.sin(t * 400 * Math.PI) * 0.5 + 0.5;
+                }
+                const source = ctx.createBufferSource();
+                source.buffer = buffer;
+                const gain = ctx.createGain();
+                gain.gain.setValueAtTime(0.6, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                source.connect(gain);
+                gain.connect(ctx.destination);
+                source.start(now);
+            } catch (e) { /* silent */ }
+        }
+
+        function playClickSound() {
+            try {
+                const ctx = getAudioContext();
+                const now = ctx.currentTime;
+                const osc = ctx.createOscillator();
+                osc.frequency.setValueAtTime(800, now);
+                osc.frequency.exponentialRampToValueAtTime(200, now + 0.06);
+                const gain = ctx.createGain();
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.06);
+            } catch (e) { /* silent */ }
+        }
+
+        // ==================== SHOOTING SYSTEM ====================
+        const raycaster = new THREE.Raycaster();
+        raycaster.far = 200;
+        const bulletTrails = [];
+
+        function getWindOffset() {
+    if (!weatherWind || windSpeed < 0.3) return new THREE.Vector3(0, 0, 0);
+    const strength = windSpeed / 5;
+    const gust = 1 + Math.sin(windGustTimer * 3.5) * 0.4 + Math.sin(windGustTimer * 7.1) * 0.2;
+    // 子弹偏向风吹去的方向
+    return windDirection.clone().multiplyScalar(-1).multiplyScalar(strength * gust * 0.18);
+}
+
+        function fireBullet() {
+            if (currentAmmo <= 0 || isReloading) return;
+            currentAmmo--;
+            updateAmmoHUD();
+            playGunshot();
+
+            // Muzzle flash
+            muzzleFlashMat.opacity = 1;
+            muzzleFlash.scale.set(2.5 + Math.random(), 2.5 + Math.random(), 2.5 + Math.random());
+
+            // Recoil animation（平滑恢复版）
+const recoilZ = 0.06 + Math.random() * 0.04;
+const recoilY = 0.02 + Math.random() * 0.03;
+gunGroup.position.z += recoilZ;
+gunGroup.position.y += recoilY;
+// 标记需要恢复，由动画循环处理
+gunGroup.userData.recoilRecovery = true;
+
+            // Calculate direction
+            const direction = new THREE.Vector3(0, 0, -1);
+            direction.applyQuaternion(camera.quaternion);
+
+            // Apply wind offset
+            const windOff = getWindOffset();
+            if (!isADS) {
+                // Hip fire: larger spread + wind shifts spread center
+                const spreadBase = 0.04;
+                const spreadWind = windOff.clone().multiplyScalar(0.6);
+                direction.x += (Math.random() - 0.5) * spreadBase * 2 + spreadWind.x;
+                direction.y += (Math.random() - 0.5) * spreadBase * 2 + spreadWind.y;
+                direction.z += (Math.random() - 0.5) * spreadBase * 1.5 + spreadWind.z;
+            } else {
+                // ADS: precise but wind causes systematic偏移
+                direction.x += windOff.x;
+                direction.y += windOff.y;
+                direction.z += windOff.z;
+                // Tiny random spread
+                const adsSpread = 0.003;
+                direction.x += (Math.random() - 0.5) * adsSpread;
+                direction.y += (Math.random() - 0.5) * adsSpread;
+            }
+            direction.normalize();
+
+            // Raycast
+            raycaster.set(camera.position, direction);
+            const allHitTargets = [...targetHitboxes, ...buildings.map(b => ({ group: b, center: new THREE.Vector3(b
+                .position.x, b.position.y, b.position.z), radius: Math.max(b.geometry.parameters.width, b.geometry
+                .parameters.depth) / 1.5, height: b.geometry.parameters.height, isBuilding: true })), ...containers.map(
+                c => ({ group: c, center: new THREE.Vector3(c.position.x, c.position.y, c.position.z), radius: Math
+                    .max(c.geometry.parameters.width, c.geometry.parameters.depth) / 1.3, height: c.geometry
+                    .parameters.height, isContainer: true }))];
+
+            // Actually use simpler approach - just check targets directly
+            let hitSomething = false;
+            for (const tb of targetHitboxes) {
+                if (tb.hit) continue;
+                const dist = raycaster.ray.distanceToPoint(tb.center);
+                if (dist < tb.radius + 0.3) {
+                    const pointOnRay = raycaster.ray.at(dist, new THREE.Vector3());
+                    if (Math.abs(pointOnRay.y - tb.center.y) < tb.height / 2 + 0.3) {
+                        // Hit!
+                        tb.hit = true;
+                        tb.respawnTime = performance.now() / 1000 + 2.5;
+                        tb.group.visible = false;
+                        hitSomething = true;
+                        // Spawn hit particles
+                        spawnHitParticles(pointOnRay);
+                        break;
+                    }
+                }
+            }
+
+            // Also check buildings/containers for visual feedback
+            if (!hitSomething) {
+                const intersects = raycaster.intersectObjects([...buildings, ...containers, ground, bridgeDeck,
+                    pillar1, pillar2
+                ], false);
+                if (intersects.length > 0 && intersects[0].distance < 150) {
+                    spawnHitParticles(intersects[0].point);
+                }
+            }
+
+            // Bullet trail (visual only)
+            const trailStart = camera.position.clone().add(new THREE.Vector3(0.35, -0.35, -0.55).applyQuaternion(camera
+                .quaternion));
+            const trailEnd = direction.clone().multiplyScalar(80).add(camera.position);
+            createBulletTrail(trailStart, trailEnd);
+
+            fireCooldown = FIRE_RATE;
+        }
+
+        function spawnHitParticles(position) {
+            const count = 8;
+            for (let i = 0; i < count; i++) {
+                const geo = new THREE.SphereGeometry(0.03, 3, 3);
+                const mat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 1,
+                    depthWrite: false });
+                const particle = new THREE.Mesh(geo, mat);
+                particle.position.copy(position);
+                particle.userData.velocity = new THREE.Vector3((Math.random() - 0.5) * 8, Math.random() * 6 + 3, (Math
+                    .random() - 0.5) * 8);
+                particle.userData.life = 0.6 + Math.random() * 0.5;
+                particle.userData.birthTime = performance.now() / 1000;
+                scene.add(particle);
+                setTimeout(() => {
+                    if (particle.parent) scene.remove(particle);
+                }, 1500);
+            }
+        }
+
+        function createBulletTrail(start, end) {
+            const points = [start.clone(), end.clone()];
+            const geo = new THREE.BufferGeometry().setFromPoints(points);
+            const mat = new THREE.LineBasicMaterial({ color: 0xffffcc, transparent: true, opacity: 0.5,
+            depthWrite: false });
+            const line = new THREE.Line(geo, mat);
+            line.userData.birthTime = performance.now() / 1000;
+            line.userData.life = 0.25;
+            scene.add(line);
+            bulletTrails.push(line);
+        }
+
+        function startFiring() {
+            if (!isPointerLocked || isReloading) return;
+            isFiring = true;
+            if (currentAmmo > 0 && fireCooldown <= 0) fireBullet();
+        }
+
+        function stopFiring() {
+            isFiring = false;
+        }
+
+        // ==================== ADS ====================
+        function toggleADS(on) {
+            if (on && !isADS && isPointerLocked) {
+                isADS = true;
+                adsTarget = 1;
+                scopeOverlay.classList.add('active');
+                crosshairEl.classList.add('ads-mode');
+                if (weatherRain) scopeWaterCanvas.classList.add('active');
+            } else if (!on && isADS) {
+                isADS = false;
+                adsTarget = 0;
+                scopeOverlay.classList.remove('active');
+                crosshairEl.classList.remove('ads-mode');
+                scopeWaterCanvas.classList.remove('active');
+            }
+        }
+
+        // ==================== THERMAL ====================
+        function toggleThermal() {
+            isThermal = !isThermal;
+            if (isThermal) {
+                gameContainer.classList.add('thermal');
+                hudThermal.textContent = '🌡️ 热成像: 开';
+                hudThermal.classList.add('thermal-on');
+                // Reduce fog when thermal is on (penetrates fog)
+                if (weatherFog) {
+                    scene.fog = new THREE.FogExp2(0x8aacc4, 0.00002);
+                }
+            } else {
+                gameContainer.classList.remove('thermal');
+                hudThermal.textContent = '🌡️ 热成像: 关';
+                hudThermal.classList.remove('thermal-on');
+                if (weatherFog) {
+                    scene.fog = new THREE.FogExp2(0xc8d8e8, 0.0006);
+                }
+            }
+            // 在 toggleThermal 函数内，playClickSound() 之前插入
+if (fogSphere && weatherFog) {
+    fogSphere.material.uniforms.uOpacity.value = isThermal ? 0.15 : 1.0;
+}
+// 切换所有目标的热感轮廓
+targets.forEach(target => {
+    const glow = target.getObjectByName('heatGlow');
+    if (glow) glow.visible = isThermal;
+});
+if (isThermal) {
+    scene.background = new THREE.Color(0x111122);   // 深色背景
+    ambientLight.intensity = 0.25;                   // 降低环境光，让场景更暗
+} else {
+    scene.background = new THREE.Color(0x4a6fa5);
+    ambientLight.intensity = 0.9;
+}
+            playClickSound();
+        }
+
+        // ==================== WEATHER ====================
+        function updateWeatherUI() {
+            const parts = [];
+            if (weatherWind) parts.push('💨大风');
+            if (weatherRain) parts.push('🌧️暴雨');
+            if (weatherFog) parts.push('🌫️大雾');
+            if (parts.length === 0) parts.push('☀️晴');
+            hudWeather.textContent = parts.join('+');
+            if (parts.length > 1) hudWeather.classList.add('active-weather');
+            else hudWeather.classList.remove('active-weather');
+            hudWind.textContent = weatherWind ? `💨 风速: ${Math.round(windSpeed)}级` : '💨 风速: 0级';
+            if (weatherWind && windSpeed >= 3) hudWind.classList.add('warning');
+            else hudWind.classList.remove('warning');
+        }
+
+        function toggleWeather(type) {
+           if (type === 'wind') {
+    // 循环切换：0→1→2→3→4→5→0
+    if (!weatherWind) {
+        weatherWind = true;
+        targetWindSpeed = 1;
+    } else {
+        targetWindSpeed = (targetWindSpeed < 5) ? targetWindSpeed + 1 : 0;
+        if (targetWindSpeed === 0) {
+            weatherWind = false;
+            windSpeed = 0;
+        }
+    }
+    if (weatherWind && targetWindSpeed > 0) {
+        windDirection = new THREE.Vector3((Math.random() - 0.5) * 2, 0, (Math.random() - 0.5) * 2).normalize();
+    }
+    if (windParticleSystem) {
+    windParticleSystem.visible = weatherWind && windSpeed > 0.3;
+}
+}
+            if (type === 'rain') {
+                weatherRain = !weatherRain;
+                rainSystem.visible = weatherRain;
+                if (!weatherRain && isADS) scopeWaterCanvas.classList.remove('active');
+                if (weatherRain && isADS) scopeWaterCanvas.classList.add('active');
+            }
+            if (type === 'fog') {
+    weatherFog = !weatherFog;
+    if (weatherFog) {
+        if (!fogSphere) {
+            // 创建雾球（只在首次需要时创建）
+            const geometry = new THREE.SphereGeometry(FOG_SPHERE_RADIUS, 64, 32);
+            const material = new THREE.ShaderMaterial({
+    uniforms: {
+        uCameraPos: { value: camera.position.clone() },
+        uRadius: { value: FOG_SPHERE_RADIUS },
+        uOpacity: { value: 1.0 }   // 👈 新增
+    },
+    vertexShader: /*glsl*/`
+        varying vec3 vWorldPos;
+        void main() {
+            vec4 worldPos = modelMatrix * vec4(position, 1.0);
+            vWorldPos = worldPos.xyz;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: /*glsl*/`
+        uniform vec3 uCameraPos;
+        uniform float uRadius;
+        uniform float uOpacity;   // 👈 新增
+        varying vec3 vWorldPos;
+        void main() {
+            float dist = distance(vWorldPos, uCameraPos);
+            float alpha = smoothstep(uRadius * 0.6, uRadius, dist) * uOpacity;  // 👈 乘以 uOpacity
+            gl_FragColor = vec4(1.0, 1.0, 1.0, alpha);
+        }
+    `,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.BackSide
+});
+            fogSphere = new THREE.Mesh(geometry, material);
+            fogSphere.renderOrder = 999;   // 最后渲染，避免遮挡准星
+            fogSphere.material.depthTest = true;
+        }
+        fogSphere.visible = true;
+        scene.add(fogSphere);
+        // 根据热成像状态设置初始透明度
+        fogSphere.material.uniforms.uOpacity.value = isThermal ? 0.15 : 1.0;
+        // 可选：微微降低场景雾，让球外更朦胧
+        scene.fog = new THREE.FogExp2(0xc8d8e8, 0.0003);
+    } else {
+        if (fogSphere) fogSphere.visible = false;
+        scene.fog = new THREE.FogExp2(0x8aacc4, 0.00008); // 恢复默认雾
+    }
+}
+            updateWeatherUI();
+            playClickSound();
+        }
+
+        function clearAllWeather() {
+            weatherWind = false;
+            weatherRain = false;
+            weatherFog = false;
+            targetWindSpeed = 0;
+            windSpeed = 0;
+            rainSystem.visible = false;
+            scopeWaterCanvas.classList.remove('active');
+            scene.fog = new THREE.FogExp2(0x8aacc4, 0.00008);
+            scene.background = new THREE.Color(0x4a6fa5);
+            updateWeatherUI();
+            playClickSound();
+            if (fogSphere) fogSphere.visible = false;
+            if (windParticleSystem) windParticleSystem.visible = false;
+        }
+
+        // ==================== RELOAD ====================
+        function startReload() {
+            if (isReloading || currentAmmo >= MAX_AMMO) return;
+            isReloading = true;
+            reloadStartTime = performance.now() / 1000;
+            reloadBarContainer.style.display = 'block';
+            reloadBarFill.style.width = '0%';
+            playClickSound();
+        }
+
+        function finishReload() {
+            isReloading = false;
+            currentAmmo = MAX_AMMO;
+            reloadBarContainer.style.display = 'none';
+            updateAmmoHUD();
+            fireCooldown = 0;
+            // Animate magazine back
+            const mag = gunGroup.getObjectByName('magazine');
+            if (mag) mag.position.y = -0.1;
+        }
+
+        function updateAmmoHUD() {
+            hudAmmoCurrent.textContent = currentAmmo;
+            if (currentAmmo <= 5) {
+                hudAmmoCurrent.classList.add('ammo-low');
+            } else {
+                hudAmmoCurrent.classList.remove('ammo-low');
+            }
+        }
+
+        // ==================== WATER DROPLETS ON SCOPE ====================
+        const waterDrops = [];
+        const MAX_WATER_DROPS = 35;
+
+        function spawnWaterDrop() {
+            return {
+                x: Math.random() * 400 + 10,
+                y: -10 - Math.random() * 40,
+                radius: 2 + Math.random() * 6,
+                speed: 0.8 + Math.random() * 3.5,
+                opacity: 0.4 + Math.random() * 0.55,
+                trailLength: 0,
+                maxTrail: 8 + Math.random() * 20,
+            };
+        }
+
+        function updateWaterDrops(dt) {
+            if (!weatherRain || !isADS) {
+                waterDrops.length = 0;
+                return;
+            }
+            // Spawn new drops
+            if (waterDrops.length < MAX_WATER_DROPS && Math.random() < 0.4) {
+                waterDrops.push(spawnWaterDrop());
+            }
+            // Update existing
+            for (let i = waterDrops.length - 1; i >= 0; i--) {
+                const drop = waterDrops[i];
+                drop.y += drop.speed * 60 * dt;
+                drop.trailLength = Math.min(drop.maxTrail, drop.trailLength + drop.speed * dt * 8);
+                if (drop.y > 440) {
+                    waterDrops.splice(i, 1);
+                }
+            }
+            // Merge nearby drops
+            for (let i = 0; i < waterDrops.length; i++) {
+                for (let j = i + 1; j < waterDrops.length; j++) {
+                    const dx = waterDrops[i].x - waterDrops[j].x;
+                    const dy = waterDrops[i].y - waterDrops[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < (waterDrops[i].radius + waterDrops[j].radius) * 0.7 && dist > 0.1) {
+                        waterDrops[i].radius = Math.min(12, waterDrops[i].radius + waterDrops[j].radius * 0.5);
+                        waterDrops[i].opacity = Math.min(0.9, waterDrops[i].opacity + 0.1);
+                        waterDrops.splice(j, 1);
+                        break;
+                    }
+                }
+            }
+        }
+
+        function drawWaterDrops() {
+            waterCtx.clearRect(0, 0, 420, 420);
+            for (const drop of waterDrops) {
+                waterCtx.save();
+                // Trail
+                if (drop.trailLength > 0) {
+                    const gradient = waterCtx.createLinearGradient(drop.x, drop.y - drop.trailLength, drop.x, drop.y);
+                    gradient.addColorStop(0, 'rgba(180,210,255,0)');
+                    gradient.addColorStop(1, `rgba(180,210,255,${drop.opacity * 0.5})`);
+                    waterCtx.fillStyle = gradient;
+                    waterCtx.beginPath();
+                    waterCtx.ellipse(drop.x, drop.y - drop.trailLength / 2, drop.radius * 0.5, drop.trailLength / 2, 0, 0,
+                        Math.PI * 2);
+                    waterCtx.fill();
+                }
+                // Main drop
+                const dropGrad = waterCtx.createRadialGradient(drop.x - drop.radius * 0.25, drop.y - drop.radius * 0.3,
+                    drop.radius * 0.1, drop.x, drop.y, drop.radius);
+                dropGrad.addColorStop(0, `rgba(220,235,255,${drop.opacity * 0.9})`);
+                dropGrad.addColorStop(0.5, `rgba(150,190,230,${drop.opacity * 0.7})`);
+                dropGrad.addColorStop(1, `rgba(100,150,200,0)`);
+                waterCtx.fillStyle = dropGrad;
+                waterCtx.beginPath();
+                waterCtx.arc(drop.x, drop.y, drop.radius, 0, Math.PI * 2);
+                waterCtx.fill();
+                // Highlight
+                waterCtx.fillStyle = `rgba(255,255,255,${drop.opacity * 0.6})`;
+                waterCtx.beginPath();
+                waterCtx.arc(drop.x - drop.radius * 0.25, drop.y - drop.radius * 0.35, drop.radius * 0.25, 0, Math.PI * 2);
+                waterCtx.fill();
+                waterCtx.restore();
+            }
+        }
+
+        // ==================== SCREEN RAIN OVERLAY ====================
+        function drawScreenRain(dt) {
+            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+            if (!weatherRain) return;
+            const w = overlayCanvas.width;
+            const h = overlayCanvas.height;
+            overlayCtx.strokeStyle = 'rgba(180,210,240,0.35)';
+            overlayCtx.lineWidth = 0.8;
+            const count = 120;
+            for (let i = 0; i < count; i++) {
+                const seed = i * 137.5;
+                const x = ((seed * 7919 + performance.now() * 0.12 * (0.7 + i * 0.03)) % w);
+                const y = ((seed * 6271 + performance.now() * 0.35 * (1 + i * 0.02)) % (h + 40)) - 20;
+                const len = 8 + (i % 18);
+                const angle = 0.15 + (i % 5) * 0.04;
+                const lx = x - Math.sin(angle) * len;
+                const ly = y - Math.cos(angle) * len;
+                overlayCtx.beginPath();
+                overlayCtx.moveTo(x, y);
+                overlayCtx.lineTo(lx, ly);
+                overlayCtx.stroke();
+            }
+        }
+
+        // ==================== GAME LOOP ====================
+        const clock = new THREE.Clock();
+        let moveSpeed = 8;
+        const baseMoveSpeed = 8;
+
+        function updateMovement(dt) {
+    if (!isPointerLocked || isReloading) return;
+
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    forward.y = 0; forward.normalize();
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    right.y = 0; right.normalize();
+
+    let moveDir = new THREE.Vector3(0, 0, 0);
+    if (keys['w']) moveDir.add(forward);
+    if (keys['s']) moveDir.sub(forward);
+    if (keys['a']) moveDir.sub(right);
+    if (keys['d']) moveDir.add(right);
+    if (moveDir.length() > 1) moveDir.normalize();
+
+    let effectiveSpeed = baseMoveSpeed;
+    let driftForce = new THREE.Vector3(0, 0, 0);
+
+    // 风的效果
+    if (weatherWind && windSpeed > 0.3) {
+        // 风吹去的方向
+        const windBlow = windDirection.clone().multiplyScalar(1);
+        windBlow.y = 0;
+        windBlow.normalize();
+
+        const forwardWind = windBlow.dot(forward);   // 正值：背后风（向前推）
+        const rightWind = windBlow.dot(right);       // 正值：右侧风
+
+        // 主动移动时的顺逆风效果
+        if (moveDir.length() > 0.01) {
+            const dot = moveDir.dot(windDirection.clone().multiplyScalar(-1).normalize());
+            const strength = windSpeed / 5;
+            if (dot < -0.2) {
+                effectiveSpeed *= (1 - strength * 0.35);  // 逆风减速
+            } else if (dot > 0.2) {
+                effectiveSpeed *= (1 + strength * 0.2);    // 顺风加速
+            }
+            // 侧风漂移（主动移动时）
+            const sideDot = Math.abs(moveDir.dot(new THREE.Vector3(-windBlow.z, 0, windBlow.x).normalize()));
+            driftForce.copy(windBlow).multiplyScalar(strength * sideDot * 1.8 * dt);
+        } else {
+            // 无按键：直接按风吹的方向推
+            const pushStrength = windSpeed * 0.8;   // 调整此处改变推力大小
+            driftForce.copy(windBlow).multiplyScalar(pushStrength * dt);
+        }
+    }
+
+    const displacement = moveDir.clone().multiplyScalar(effectiveSpeed * dt);
+    displacement.add(driftForce);
+    camera.position.add(displacement);
+
+    camera.position.x = Math.max(-70, Math.min(70, camera.position.x));
+    camera.position.z = Math.max(-85, Math.min(5, camera.position.z));
+    camera.position.y = 1.7;
+}
+        function updateWeatherSystems(dt) {
+            if (windParticleSystem) {
+    windParticleSystem.visible = weatherWind && windSpeed > 0.3;
+}
+            // Wind
+            if (weatherWind) {
+                windSpeed += (targetWindSpeed - windSpeed) * dt * 1.5;
+                windGustTimer += dt;
+                if (Math.random() < dt * 0.3) {
+                    targetWindSpeed = Math.max(1.5, Math.min(5, targetWindSpeed + (Math.random() - 0.5) * 2));
+                }
+            } else {
+                windSpeed += (0 - windSpeed) * dt * 3;
+                if (windSpeed < 0.05) windSpeed = 0;
+            }
+
+            // Rain particles
+            if (weatherRain) {
+                const posArr = rainSystem.geometry.attributes.position.array;
+                for (let i = 0; i < rainCount; i++) {
+                    posArr[i * 3 + 1] -= rainVelocities[i] * dt;
+                    if (posArr[i * 3 + 1] < -1) {
+                        posArr[i * 3 + 1] = 48 + Math.random() * 5;
+                        posArr[i * 3] = camera.position.x + (Math.random() - 0.5) * 70;
+                        posArr[i * 3 + 2] = camera.position.z + (Math.random() - 0.5) * 70;
+                    }
+                    if (weatherWind && windSpeed > 0.5) {
+                        posArr[i * 3] += windDirection.x * windSpeed * dt * 2.5;
+                        posArr[i * 3 + 2] += windDirection.z * windSpeed * dt * 2.5;
+                    }
+                }
+                rainSystem.geometry.attributes.position.needsUpdate = true;
+            }
+
+            // Fog update
+            if (weatherFog && !isThermal) {
+                const currentDensity = scene.fog.density || 0.0006;
+                const targetDensity = 0.0006;
+                scene.fog.density += (targetDensity - currentDensity) * dt * 2;
+            }
+
+            // Wind debris particles
+if (windParticleSystem && windParticleSystem.visible && weatherWind && windSpeed > 0.3) {
+    const posArr = windParticleSystem.geometry.attributes.position.array;
+    const blowDir = windDirection.clone().multiplyScalar(1).normalize(); // 吹去的方向
+    for (let i = 0; i < WIND_PARTICLE_COUNT; i++) {
+        // 移动
+        const speed = windParticleVelocities[i] * windSpeed * 0.8;
+        posArr[i * 3] += blowDir.x * speed * dt;
+        posArr[i * 3 + 1] += (blowDir.y * speed - 0.3) * dt; // 轻微下沉
+        posArr[i * 3 + 2] += blowDir.z * speed * dt;
+        // 超出范围则重置在玩家周围
+        const px = posArr[i * 3];
+        const py = posArr[i * 3 + 1];
+        const pz = posArr[i * 3 + 2];
+        const camDist = Math.sqrt(
+            (px - camera.position.x) ** 2 + (py - camera.position.y) ** 2 + (pz - camera.position.z) ** 2
+        );
+        if (camDist > 50 || py < 0 || py > 35) {
+            posArr[i * 3] = camera.position.x + (Math.random() - 0.5) * 70;
+            posArr[i * 3 + 1] = camera.position.y + Math.random() * 25;
+            posArr[i * 3 + 2] = camera.position.z + (Math.random() - 0.5) * 70;
+        }
+    }
+    windParticleSystem.geometry.attributes.position.needsUpdate = true;
+}
+        }
+
+        function updateTargets(now) {
+            for (const tb of targetHitboxes) {
+                if (tb.hit && now > tb.respawnTime) {
+                    tb.hit = false;
+                    tb.group.visible = true;
+                }
+            }
+        }
+
+        function updateBulletTrails(now) {
+            for (let i = bulletTrails.length - 1; i >= 0; i--) {
+                const trail = bulletTrails[i];
+                const age = now - trail.userData.birthTime;
+                if (age > trail.userData.life) {
+                    scene.remove(trail);
+                    bulletTrails.splice(i, 1);
+                } else {
+                    trail.material.opacity = 0.5 * (1 - age / trail.userData.life);
+                }
+            }
+        }
+
+        function updateHitParticles(now) {
+            scene.children.forEach(child => {
+                if (child.userData && child.userData.birthTime && child.userData.velocity) {
+                    const age = now - child.userData.birthTime;
+                    if (age > child.userData.life) {
+                        scene.remove(child);
+                    } else {
+                        child.position.x += child.userData.velocity.x * 0.016;
+                        child.position.y += child.userData.velocity.y * 0.016;
+                        child.position.z += child.userData.velocity.z * 0.016;
+                        child.userData.velocity.y -= GRAVITY * 0.016;
+                        child.material.opacity = 1 - age / child.userData.life;
+                        child.scale.setScalar(1 - age / child.userData.life * 0.7);
+                    }
+                }
+            });
+        }
+
+        function animate(timestamp) {
+            requestAnimationFrame(animate);
+            const dt = Math.min(clock.getDelta(), 0.1);
+            const now = timestamp / 1000;
+
+            // === 第一人称武器跟随（含步行晃动、后坐力兼容） ===
+fpGroup.position.copy(camera.position);
+fpGroup.quaternion.copy(camera.quaternion);
+
+// 基础枪械偏移（屏幕右下方）
+const baseX = 0.35;
+const baseY = -0.38;
+const baseZ = -0.55;
+
+// 步行晃动增量（只在非换弹、非锁定界面时生效）
+let bobX = 0, bobY = 0;
+if (isPointerLocked && !isReloading) {
+    const isMoving = keys['w'] || keys['a'] || keys['s'] || keys['d'];
+    if (isMoving) {
+        const bobPhase = performance.now() * 0.008;
+        bobX = Math.sin(bobPhase) * 0.015;
+        bobY = Math.abs(Math.cos(bobPhase)) * 0.022;
+    }
+}
+
+// 应用偏移（包含步行晃动）
+fpGroup.translateX(baseX + bobX);
+fpGroup.translateY(baseY + bobY);
+fpGroup.translateZ(baseZ);
+            updateMovement(dt);
+            // 雾球跟随玩家
+if (fogSphere && fogSphere.visible) {
+    fogSphere.position.copy(camera.position);
+    fogSphere.material.uniforms.uCameraPos.value.copy(camera.position);
+}
+            // 🌬️ 大风准星偏移（欧拉角累积，无翻滚）
+// 🌬️ 大风准星偏移（横向加速度，风速³ 区分极端明显）
+if (isPointerLocked && weatherWind && windSpeed > 0.3) {
+    const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    // 风吹来的方向，那吹去的方向即 -windDirection
+    const blowDirection = windDirection.clone().normalize().multiplyScalar(-1);
+    const lateral = blowDirection.dot(camRight);  // 正值表示风向右吹
+    const targetOffset = lateral * windSpeed * 0.035;
+    
+    const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+    euler.y += (targetOffset - 0) * 2.5 * dt; // 2.5 是拉扯速度
+    euler.x = Math.max(-Math.PI/2.5, Math.min(Math.PI/2.5, euler.x));
+    camera.quaternion.setFromEuler(euler);
+}
+            updateWeatherSystems(dt);
+            updateTargets(now);
+            updateBulletTrails(now);
+            updateHitParticles(now);
+            updateWaterDrops(dt);
+
+            // ADS smooth transition
+            adsCurrent += (adsTarget - adsCurrent) * Math.min(dt * 10, 1);
+            camera.fov = NORMAL_FOV + (ADS_FOV - NORMAL_FOV) * adsCurrent;
+            camera.updateProjectionMatrix();
+
+            // Fire cooldown
+            if (fireCooldown > 0) {
+                fireCooldown -= dt;
+                if (fireCooldown <= 0 && isFiring && currentAmmo > 0 && !isReloading) {
+                    fireBullet();
+                }
+            }
+
+            // Muzzle flash fade
+            if (muzzleFlashMat.opacity > 0) {
+                muzzleFlashMat.opacity -= dt * 15;
+                muzzleFlash.scale.lerp(new THREE.Vector3(0.5, 0.5, 0.5), dt * 10);
+                if (muzzleFlashMat.opacity < 0.01) muzzleFlashMat.opacity = 0;
+            }
+
+            // Reload
+            if (isReloading) {
+                const elapsed = now - reloadStartTime;
+                const progress = Math.min(1, elapsed / RELOAD_DURATION);
+                reloadBarFill.style.width = (progress * 100) + '%';
+                // Magazine animation
+                const mag = gunGroup.getObjectByName('magazine');
+                if (mag && progress < 0.7) {
+                    mag.position.y = -0.1 - Math.sin(progress / 0.7 * Math.PI) * 0.3;
+                } else if (mag && progress >= 0.7) {
+                    mag.position.y = -0.1 - (1 - progress) / 0.3 * 0.25;
+                }
+                if (progress >= 1) finishReload();
+            }
+
+            // Walking bob
+
+
+            // 枪后座力平滑恢复
+if (gunGroup.userData && gunGroup.userData.recoilRecovery) {
+    const recoverySpeed = 8.0; // 恢复速度，越大越快
+    const dz = gunGroup.position.z - gunRestPosition.z;
+    const dy = gunGroup.position.y - gunRestPosition.y;
+    if (Math.abs(dz) < 0.0005 && Math.abs(dy) < 0.0005) {
+        gunGroup.position.copy(gunRestPosition);
+        gunGroup.userData.recoilRecovery = false;
+    } else {
+        gunGroup.position.z -= dz * Math.min(1, recoverySpeed * dt);
+        gunGroup.position.y -= dy * Math.min(1, recoverySpeed * dt);
+    }
+}
+            // Gun sway from mouse
+            if (isPointerLocked) {
+                const swayX = (controls.getObject().rotation.y || 0) * 0.03;
+                const swayY = (controls.getObject().rotation.x || 0) * 0.02;
+                gunGroup.rotation.y = swayX;
+                gunGroup.rotation.x = swayY;
+            }
+
+            // R key reload
+            if (keys['r'] && !isReloading && currentAmmo < MAX_AMMO && isPointerLocked) {
+                startReload();
+                keys['r'] = false;
+            }
+
+            // Draw water drops on scope
+            if (weatherRain && isADS) {
+                drawWaterDrops();
+            }
+
+            // Draw screen rain
+            drawScreenRain(dt);
+
+            // Update overlay canvas size
+            if (overlayCanvas.width !== window.innerWidth || overlayCanvas.height !== window.innerHeight) {
+                overlayCanvas.width = window.innerWidth;
+                overlayCanvas.height = window.innerHeight;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // ==================== INIT ====================
+        function init() {
+            overlayCanvas.width = window.innerWidth;
+            overlayCanvas.height = window.innerHeight;
+            overlayCanvas.style.display = 'block';
+            updateAmmoHUD();
+            updateWeatherUI();
+            scopeWaterCanvas.width = 420;
+            scopeWaterCanvas.height = 420;
+            // Initial camera position
+            camera.position.set(0, 1.7, 5);
+            window.camera = camera;
+            window.THREE = THREE;
+window.camera = camera;
+window.scene = scene;
+camera.near = 0.01;
+camera.updateProjectionMatrix();
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            overlayCanvas.width = window.innerWidth;
+            overlayCanvas.height = window.innerHeight;
+        });
+
+        init();
+        requestAnimationFrame(animate);
+
+        console.log('🎯 极端天气射击训练场已就绪');
+        console.log('  WASD - 移动 | 鼠标 - 瞄准/左键开火 | 右键 - 开镜');
+        console.log('  R - 换弹 | T - 热成像 | 1-大风 | 2-暴雨 | 3-大雾 | 0-晴天');
+        console.log('  风会影响弹道和移动 | 雨会模糊瞄准镜 | 雾需热成像穿透');
+    </script>
+</body>
+</html>
